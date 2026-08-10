@@ -37,11 +37,13 @@ export async function apiRequest<T = any>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken();
+  const isNgrok = API_URL.includes('ngrok');
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(isNgrok ? { 'ngrok-skip-browser-warning': 'true' } : {}),
       ...(options.headers as Record<string, string> | undefined ?? {}),
     },
   });
