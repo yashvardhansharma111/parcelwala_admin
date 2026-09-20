@@ -75,6 +75,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (tab === 'pricing') loadPricing();
+    if (tab === 'dispatch') loadDispatch();
     if (tab === 'coadmins' && isSuperAdmin) loadCoAdmins();
     if (tab === 'areas') loadAreas();
   }, [tab]);
@@ -95,6 +96,13 @@ export default function SettingsPage() {
       alert('Pricing saved!');
     } catch (e: any) { alert(e.message); }
     finally { setSavingPricing(false); }
+  }
+
+  async function loadDispatch() {
+    try {
+      const res = await apiRequest<DispatchConfig>('/admin/settings/dispatch');
+      if (res) setDispatch(res);
+    } catch { /* use defaults */ }
   }
 
   async function saveDispatch() {

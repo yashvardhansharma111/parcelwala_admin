@@ -308,6 +308,32 @@ export default function BookingDetailPage() {
         </Card>
       </div>
 
+      {/* Google Maps — pickup & drop locations */}
+      {(booking.pickup?.lat != null || booking.drop?.lat != null) && (() => {
+        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+        const markerParams: string[] = [];
+        if (booking.pickup?.lat != null && booking.pickup?.lon != null)
+          markerParams.push(`markers=color:green%7Clabel:P%7C${booking.pickup.lat},${booking.pickup.lon}`);
+        if (booking.drop?.lat != null && booking.drop?.lon != null)
+          markerParams.push(`markers=color:red%7Clabel:D%7C${booking.drop.lat},${booking.drop.lon}`);
+        const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=700x280&scale=2&${markerParams.join('&')}&key=${apiKey}`;
+        return (
+          <div className="mt-4 bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+            <h3 className="font-semibold text-slate-700 mb-3 text-sm uppercase tracking-wide">Route Map</h3>
+            <img
+              src={mapUrl}
+              alt="Pickup and drop locations"
+              className="w-full rounded-lg border border-slate-100"
+              style={{ maxHeight: 280, objectFit: 'cover' }}
+            />
+            <div className="flex gap-4 mt-2 text-xs text-slate-500">
+              {booking.pickup?.lat != null && <span className="flex items-center gap-1"><span className="text-green-600">●</span> Pickup</span>}
+              {booking.drop?.lat != null && <span className="flex items-center gap-1"><span className="text-red-500">●</span> Drop</span>}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Status Timeline */}
       <div className="mt-4 bg-white rounded-xl shadow-sm border border-slate-100 p-5">
         <h3 className="font-semibold text-slate-700 mb-4">Update Status</h3>
