@@ -7,9 +7,14 @@ import { getToken, getStoredUser, clearAuth } from '@/lib/api';
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: '⬡' },
+  // Bookings had a detail page but no list and no link, so it was unreachable.
+  { href: '/bookings', label: 'Bookings', icon: '📦' },
+  { href: '/users', label: 'Customers', icon: '👥' },
   { href: '/riders', label: 'Riders', icon: '🏍' },
   { href: '/analytics', label: 'Analytics', icon: '📊' },
   { href: '/withdrawals', label: 'Withdrawals', icon: '💸' },
+  { href: '/coupons', label: 'Coupons', icon: '🏷' },
+  { href: '/notifications', label: 'Notifications', icon: '🔔' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ];
 

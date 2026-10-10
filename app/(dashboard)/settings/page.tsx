@@ -24,6 +24,10 @@ interface RestrictedArea {
   id: string; name: string; lat: number; lon: number; radiusKm: number; isActive: boolean;
 }
 
+interface ServiceArea {
+  id: string; name: string; city?: string; lat: number; lon: number; radiusKm: number; isActive: boolean;
+}
+
 const SUPER_ADMIN_PHONE = '8462044151';
 
 function normalize(p?: string) {
@@ -73,11 +77,17 @@ export default function SettingsPage() {
   const [newArea, setNewArea] = useState({ name: '', lat: '', lon: '', radiusKm: '' });
   const [creatingArea, setCreatingArea] = useState(false);
 
+  // Service areas (where we DO operate)
+  const [svcAreas, setSvcAreas] = useState<ServiceArea[]>([]);
+  const [loadingSvc, setLoadingSvc] = useState(false);
+  const [newSvc, setNewSvc] = useState({ name: '', city: '', lat: '', lon: '', radiusKm: '' });
+  const [creatingSvc, setCreatingSvc] = useState(false);
+
   useEffect(() => {
     if (tab === 'pricing') loadPricing();
     if (tab === 'dispatch') loadDispatch();
     if (tab === 'coadmins' && isSuperAdmin) loadCoAdmins();
-    if (tab === 'areas') loadAreas();
+    if (tab === 'areas') { loadAreas(); loadServiceAreas(); }
   }, [tab]);
 
   async function loadPricing() {
@@ -182,6 +192,50 @@ export default function SettingsPage() {
       setAreas(res.areas || []);
     } catch (e: any) { alert(e.message); }
     finally { setLoadingAreas(false); }
+  }
+
+  async function loadServiceAreas() {
+    setLoadingSvc(true);
+    try {
+      const res = await apiRequest<{ areas: ServiceArea[] }>('/admin/service-areas');
+      setSvcAreas(res.areas || []);
+    } catch (e: any) { alert(e.message); }
+    finally { setLoadingSvc(false); }
+  }
+
+  async function createSvcArea() {
+    if (!newSvc.name || !newSvc.lat || !newSvc.lon || !newSvc.radiusKm) return;
+    setCreatingSvc(true);
+    try {
+      await apiRequest('/admin/service-areas', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newSvc.name, city: newSvc.city || undefined,
+          lat: parseFloat(newSvc.lat), lon: parseFloat(newSvc.lon),
+          radiusKm: parseFloat(newSvc.radiusKm), isActive: true,
+        }),
+      });
+      setNewSvc({ name: '', city: '', lat: '', lon: '', radiusKm: '' });
+      loadServiceAreas();
+    } catch (e: any) { alert(e.message); }
+    finally { setCreatingSvc(false); }
+  }
+
+  async function toggleSvcArea(area: ServiceArea) {
+    try {
+      await apiRequest(`/admin/service-areas/${area.id}`, {
+        method: 'PATCH', body: JSON.stringify({ isActive: !area.isActive }),
+      });
+      loadServiceAreas();
+    } catch (e: any) { alert(e.message); }
+  }
+
+  async function deleteSvcArea(area: ServiceArea) {
+    if (!confirm(`Delete service area "${area.name}"? Bookings there will stop being accepted.`)) return;
+    try {
+      await apiRequest(`/admin/service-areas/${area.id}`, { method: 'DELETE' });
+      loadServiceAreas();
+    } catch (e: any) { alert(e.message); }
   }
 
   async function createArea() {
@@ -435,10 +489,106 @@ export default function SettingsPage() {
       {/* Areas Tab */}
       {tab === 'areas' && (
         <div className="max-w-xl">
+          <Card title="Add Service Area">
+            <p className="text-xs text-slate-500 mb-4">
+              Where you <strong>do</strong> operate. Both pickup and drop must fall inside one of these
+              circles or the customer is told service isn&apos;t available there.
+              {svcAreas.length === 0 && (
+                <span className="block mt-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                  No service areas yet — bookings are currently accepted <strong>everywhere</strong>.
+                  Enforcement starts as soon as you add the first one.
+                </span>
+              )}
+            </p>
+            <Field label="Area Name *">
+              <input
+                type="text"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                placeholder="e.g. Ujjain City"
+                value={newSvc.name} onChange={(e) => setNewSvc(a => ({ ...a, name: e.target.value }))}
+              />
+            </Field>
+            <Field label="City">
+              <input
+                type="text"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                placeholder="e.g. Ujjain"
+                value={newSvc.city} onChange={(e) => setNewSvc(a => ({ ...a, city: e.target.value }))}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Latitude *">
+                <input
+                  type="text"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  placeholder="23.1765"
+                  value={newSvc.lat} onChange={(e) => setNewSvc(a => ({ ...a, lat: e.target.value }))}
+                />
+              </Field>
+              <Field label="Longitude *">
+                <input
+                  type="text"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  placeholder="75.7885"
+                  value={newSvc.lon} onChange={(e) => setNewSvc(a => ({ ...a, lon: e.target.value }))}
+                />
+              </Field>
+            </div>
+            <Field label="Radius (km) *">
+              <input
+                type="number" min="0.1" step="0.1"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                placeholder="20"
+                value={newSvc.radiusKm} onChange={(e) => setNewSvc(a => ({ ...a, radiusKm: e.target.value }))}
+              />
+            </Field>
+            <button onClick={createSvcArea}
+              disabled={creatingSvc || !newSvc.name || !newSvc.lat || !newSvc.lon || !newSvc.radiusKm}
+              className="w-full py-2.5 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 disabled:opacity-50 transition">
+              {creatingSvc ? 'Creating...' : '+ Add Service Area'}
+            </button>
+          </Card>
+
+          <Card title="Service Areas">
+            {loadingSvc ? (
+              <div className="text-sm text-slate-400 py-4 text-center">Loading...</div>
+            ) : svcAreas.length === 0 ? (
+              <div className="text-sm text-slate-400 py-4 text-center">No service areas — serving everywhere</div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {svcAreas.map((area) => (
+                  <div key={area.id} className="flex items-center justify-between py-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-800 text-sm">{area.name}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${area.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {area.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {area.city ? `${area.city} · ` : ''}{area.lat.toFixed(4)}, {area.lon.toFixed(4)} · {area.radiusKm} km radius
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => toggleSvcArea(area)}
+                        className="text-xs px-2.5 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition">
+                        {area.isActive ? 'Disable' : 'Enable'}
+                      </button>
+                      <button onClick={() => deleteSvcArea(area)}
+                        className="text-xs px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition">
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
           <Card title="Add Restricted Area">
             <p className="text-xs text-slate-500 mb-4">
-              Define a circular zone where service is unavailable. Bookings with pickup or drop inside the zone will be rejected.
-              Use Google Maps or similar to get lat/lon for your city center.
+              A carve-out <em>inside</em> a service area — a zone you cover on the map but won&apos;t deliver to.
+              Bookings with pickup or drop inside are rejected.
             </p>
             <Field label="Area Name *">
               <input
