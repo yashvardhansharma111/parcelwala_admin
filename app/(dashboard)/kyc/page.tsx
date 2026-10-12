@@ -34,6 +34,10 @@ interface Rider {
   dlName?: string;
   dlValidUpto?: string;
   aadhaarVerified?: boolean;
+  /** Provider's own word for an unfinished DigiLocker: PENDING, EXPIRED, FAILED. */
+  digilockerStatus?: string;
+  digilockerCheckedAt?: string;
+  aadhaarName?: string;
 
   selfieUrl?: string;
   licensePhotoUrl?: string;
@@ -389,7 +393,19 @@ export default function KycPage() {
                       key={c.key}
                       className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
-                      <span className="text-slate-700">{c.label}</span>
+                      <span className="text-slate-700">
+                        {c.label}
+                        {/* "Not done" alone cannot tell apart a rider who never
+                            started from one who abandoned it halfway — and that
+                            changes what you say when you call them. */}
+                        {c.key === 'aadhaarVerified' && !selected.aadhaarVerified && selected.digilockerStatus && (
+                          <span className="ml-2 text-xs text-slate-400">
+                            {selected.digilockerStatus === 'PENDING'
+                              ? 'started, not completed'
+                              : selected.digilockerStatus.toLowerCase()}
+                          </span>
+                        )}
+                      </span>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                           selected[c.key]

@@ -10,6 +10,12 @@ interface PricingConfig {
   waitingPerMin: number; handlingFee: number; applyHandlingFeeByDefault: boolean;
   platformCommissionPct: number; minWithdrawalAmount: number;
   returnTripRiderPct: number; cancellationFeeAfterAssign: number;
+  // What the rider sees on the app's Rate Card screen. These are the global
+  // defaults; a city can override any of them on the Cities page.
+  riderBasePerOrder: number; riderPerMinute: number;
+  riderTier1UptoKm: number; riderTier1PerKm: number;
+  riderTier2UptoKm: number; riderTier2PerKm: number;
+  riderTier3PerKm: number;
 }
 
 interface DispatchConfig {
@@ -51,6 +57,10 @@ export default function SettingsPage() {
     handlingFee: 10, applyHandlingFeeByDefault: true,
     platformCommissionPct: 20, minWithdrawalAmount: 100,
     returnTripRiderPct: 50, cancellationFeeAfterAssign: 30,
+    riderBasePerOrder: 30, riderPerMinute: 2,
+    riderTier1UptoKm: 3, riderTier1PerKm: 10,
+    riderTier2UptoKm: 8, riderTier2PerKm: 12,
+    riderTier3PerKm: 14,
   });
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [savingPricing, setSavingPricing] = useState(false);
@@ -339,6 +349,34 @@ export default function SettingsPage() {
                 />
               </Field>
             ))}
+          </Card>
+
+          <Card title="Rider Rate Card">
+            <p className="text-xs text-slate-500 mb-4">
+              These are the exact figures shown on the rider&apos;s Rate Card screen in the app.
+              They apply everywhere unless a city overrides them on the Cities page.
+            </p>
+            {[
+              { label: 'Base per order (₹)', key: 'riderBasePerOrder', step: '1' },
+              { label: 'Time + waiting (₹/min)', key: 'riderPerMinute', step: '0.5' },
+              { label: 'Band 1 up to (km)', key: 'riderTier1UptoKm', step: '0.5' },
+              { label: 'Band 1 rate (₹/km)', key: 'riderTier1PerKm', step: '0.5' },
+              { label: 'Band 2 up to (km)', key: 'riderTier2UptoKm', step: '0.5' },
+              { label: 'Band 2 rate (₹/km)', key: 'riderTier2PerKm', step: '0.5' },
+              { label: 'Above band 2, rate (₹/km)', key: 'riderTier3PerKm', step: '0.5' },
+            ].map(({ label, key, step }) => (
+              <Field key={key} label={label}>
+                <input
+                  type="number" min="0" step={step}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  value={(pricing as any)[key]}
+                  onChange={(e) => setPricing(p => ({ ...p, [key]: parseFloat(e.target.value) || 0 }))}
+                />
+              </Field>
+            ))}
+            <p className="text-xs text-slate-500 mt-3">
+              Rider earns: base + distance by band + per-minute for trip time including waiting.
+            </p>
           </Card>
 
           <button onClick={savePricing} disabled={savingPricing || loadingPricing}

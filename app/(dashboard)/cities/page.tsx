@@ -34,6 +34,17 @@ interface CityMetrics {
   baseKmIncluded: number | null;
   waitingPerMin: number | null;
   handlingFee: number | null;
+  intercityDocFare: number | null;
+  intercityUpto3Fare: number | null;
+  intercityAbove3Fare: number | null;
+  intercityGstPct: number | null;
+  riderBasePerOrder: number | null;
+  riderTier1UptoKm: number | null;
+  riderTier1PerKm: number | null;
+  riderTier2UptoKm: number | null;
+  riderTier2PerKm: number | null;
+  riderTier3PerKm: number | null;
+  riderPerMinute: number | null;
   checklist: ChecklistItem[];
   actual: {
     riders: number;
@@ -70,13 +81,14 @@ type RateCard = {
   minFare: number;
 };
 
-const PRESETS: Record<string, RateCard> = {
+const PRESETS: Record<string, Partial<RateCard>> = {
   'Tier-3 town': { baseFare: 25, baseKmIncluded: 2, perKmRate: 7, waitingPerMin: 1, handlingFee: 0, minFare: 30 },
   'Tier-2 city': { baseFare: 30, baseKmIncluded: 2, perKmRate: 8, waitingPerMin: 2, handlingFee: 10, minFare: 40 },
   'Dense metro': { baseFare: 40, baseKmIncluded: 2, perKmRate: 10, waitingPerMin: 3, handlingFee: 15, minFare: 55 },
 };
 
-const RATE_FIELDS: { key: keyof RateCard; label: string; hint: string }[] = [
+/** Hyperlocal (C2C) is priced by distance. */
+const HYPERLOCAL_FIELDS: { key: keyof CityMetrics; label: string; hint: string }[] = [
   { key: 'baseFare', label: 'Base fare', hint: '₹' },
   { key: 'baseKmIncluded', label: 'Km included', hint: 'km' },
   { key: 'perKmRate', label: 'Per km after', hint: '₹/km' },
@@ -84,6 +96,27 @@ const RATE_FIELDS: { key: keyof RateCard; label: string; hint: string }[] = [
   { key: 'handlingFee', label: 'Handling', hint: '₹' },
   { key: 'minFare', label: 'Minimum fare', hint: '₹' },
 ];
+
+/** Intercity is a flat rate by weight band — nothing to do with distance. */
+const INTERCITY_FIELDS: { key: keyof CityMetrics; label: string; hint: string }[] = [
+  { key: 'intercityDocFare', label: 'Documents', hint: '₹ flat' },
+  { key: 'intercityUpto3Fare', label: 'Up to 3 kg', hint: '₹ flat' },
+  { key: 'intercityAbove3Fare', label: 'Above 3 kg', hint: '₹ flat' },
+  { key: 'intercityGstPct', label: 'GST', hint: '%' },
+];
+
+/** What the rider earns — shown to them in the app's Rate Card screen. */
+const RIDER_FIELDS: { key: keyof CityMetrics; label: string; hint: string }[] = [
+  { key: 'riderBasePerOrder', label: 'Base per order', hint: '₹' },
+  { key: 'riderPerMinute', label: 'Time + waiting', hint: '₹/min' },
+  { key: 'riderTier1UptoKm', label: 'Band 1 up to', hint: 'km' },
+  { key: 'riderTier1PerKm', label: 'Band 1 rate', hint: '₹/km' },
+  { key: 'riderTier2UptoKm', label: 'Band 2 up to', hint: 'km' },
+  { key: 'riderTier2PerKm', label: 'Band 2 rate', hint: '₹/km' },
+  { key: 'riderTier3PerKm', label: 'Beyond band 2', hint: '₹/km' },
+];
+
+const RATE_FIELDS = [...HYPERLOCAL_FIELDS, ...INTERCITY_FIELDS, ...RIDER_FIELDS];
 
 function Progress({ actual, target }: { actual: number; target: number | null }) {
   if (!target) {
@@ -164,6 +197,17 @@ export default function CitiesPage() {
           baseKmIncluded: editing.baseKmIncluded,
           waitingPerMin: editing.waitingPerMin,
           handlingFee: editing.handlingFee,
+          intercityDocFare: editing.intercityDocFare,
+          intercityUpto3Fare: editing.intercityUpto3Fare,
+          intercityAbove3Fare: editing.intercityAbove3Fare,
+          intercityGstPct: editing.intercityGstPct,
+          riderBasePerOrder: editing.riderBasePerOrder,
+          riderTier1UptoKm: editing.riderTier1UptoKm,
+          riderTier1PerKm: editing.riderTier1PerKm,
+          riderTier2UptoKm: editing.riderTier2UptoKm,
+          riderTier2PerKm: editing.riderTier2PerKm,
+          riderTier3PerKm: editing.riderTier3PerKm,
+          riderPerMinute: editing.riderPerMinute,
           checklist: editing.checklist,
           notes: editing.notes,
         }),
@@ -409,7 +453,9 @@ export default function CitiesPage() {
 
             <div className="mt-5">
               <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-medium text-slate-700">Pricing preset</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Hyperlocal (C2C) rate card
+                </label>
                 <div className="flex gap-1">
                   {Object.entries(PRESETS).map(([label, p]) => (
                     <button
@@ -423,7 +469,7 @@ export default function CitiesPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {RATE_FIELDS.map(({ key, label, hint }) => {
+                {HYPERLOCAL_FIELDS.map(({ key, label, hint }) => {
                   const overridden = (editing[key] as number | null) != null;
                   return (
                     <div key={key}>
@@ -446,6 +492,65 @@ export default function CitiesPage() {
                 Blank means this city inherits the global value from Settings. Highlighted
                 fields are overridden here. Fares use the <strong>pickup</strong> city&apos;s card.
               </p>
+
+              <div className="mt-5 border-t border-slate-200 pt-4">
+                <label className="text-sm font-medium text-slate-700">
+                  Rider rate card
+                </label>
+                <p className="mb-2 text-xs text-slate-500">
+                  What riders are shown in the app. Time and waiting are one rate, not two.
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {RIDER_FIELDS.map(({ key, label, hint }) => {
+                    const overridden = (editing[key] as number | null) != null;
+                    return (
+                      <div key={key}>
+                        <span className="text-xs text-slate-500">
+                          {label} <span className="text-slate-400">({hint})</span>
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={(editing[key] as number | null) ?? ''}
+                          onChange={(e) => patch({ [key]: num(e.target.value) } as any)}
+                          placeholder="inherit"
+                          className={`${inputCls} ${overridden ? 'border-emerald-300 bg-emerald-50' : ''}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-5 border-t border-slate-200 pt-4">
+                <label className="text-sm font-medium text-slate-700">
+                  Intercity rate card
+                </label>
+                <p className="mb-2 text-xs text-slate-500">
+                  A separate card: intercity is a flat rate by weight band, not by distance,
+                  so changing it never affects C2C.
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {INTERCITY_FIELDS.map(({ key, label, hint }) => {
+                    const overridden = (editing[key] as number | null) != null;
+                    return (
+                      <div key={key}>
+                        <span className="text-xs text-slate-500">
+                          {label} <span className="text-slate-400">({hint})</span>
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={(editing[key] as number | null) ?? ''}
+                          onChange={(e) => patch({ [key]: num(e.target.value) } as any)}
+                          placeholder="inherit"
+                          className={`${inputCls} ${overridden ? 'border-sky-300 bg-sky-50' : ''}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               <button
                 onClick={() =>
                   patch({
@@ -455,11 +560,22 @@ export default function CitiesPage() {
                     waitingPerMin: null,
                     handlingFee: null,
                     minFare: null,
+                    intercityDocFare: null,
+                    intercityUpto3Fare: null,
+                    intercityAbove3Fare: null,
+                    intercityGstPct: null,
+                    riderBasePerOrder: null,
+                    riderTier1UptoKm: null,
+                    riderTier1PerKm: null,
+                    riderTier2UptoKm: null,
+                    riderTier2PerKm: null,
+                    riderTier3PerKm: null,
+                    riderPerMinute: null,
                   })
                 }
                 className="mt-2 text-xs font-medium text-slate-500 underline hover:text-slate-700"
               >
-                Clear all overrides — use global pricing
+                Clear all overrides (all three cards) — use global pricing
               </button>
             </div>
 
