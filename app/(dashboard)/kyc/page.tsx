@@ -33,6 +33,18 @@ interface Rider {
   dlVerified?: boolean;
   dlName?: string;
   dlValidUpto?: string;
+  dob?: string;
+  dlIssueDate?: string;
+  dlStatus?: string;
+  dlVehicleClasses?: string[];
+  dlRtoState?: string;
+  dlRtoAuthority?: string;
+  dlAddress?: string;
+  dlVerifiedAt?: string;
+  panVerifiedAt?: string;
+  aadhaarDob?: string;
+  aadhaarAddress?: string;
+  aadhaarVerifiedAt?: string;
   aadhaarVerified?: boolean;
   /** Provider's own word for an unfinished DigiLocker: PENDING, EXPIRED, FAILED. */
   digilockerStatus?: string;
@@ -355,24 +367,70 @@ export default function KycPage() {
             <div className="mt-5 grid gap-5 sm:grid-cols-2">
               <div>
                 <h3 className="mb-2 text-sm font-semibold text-slate-900">Details</h3>
-                <dl className="space-y-1.5 text-sm">
-                  {[
-                    ['Phone', selected.phone],
-                    ['City', selected.city],
-                    ['Vehicle', [selected.vehicleType, selected.vehicleNumber].filter(Boolean).join(' · ')],
-                    ['Licence no.', selected.licenseNumber],
-                    ['Licence valid to', selected.dlValidUpto],
-                    ['Name on DL', selected.dlName],
-                    ['PAN', selected.panNumber],
-                    ['Name on PAN', selected.panName],
-                    ['Aadhaar last 4', selected.aadhaarLast4],
-                  ].map(([k, v]) => (
-                    <div key={k as string} className="flex justify-between gap-3">
-                      <dt className="text-slate-500">{k}</dt>
-                      <dd className="text-right font-medium text-slate-900">{v || '—'}</dd>
+                {/* Grouped by the document each value came from. A flat list made
+                    it impossible to tell what had actually been verified against a
+                    registry and what the rider had simply typed in. */}
+                {(() => {
+                  const fmt = (d?: string) =>
+                    d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+                  const groups: [string, [string, string | undefined][]][] = [
+                    ['Rider', [
+                      ['Phone', selected.phone],
+                      ['City', selected.city],
+                      ['Vehicle', [selected.vehicleType, selected.vehicleNumber].filter(Boolean).join(' · ')],
+                      ['Date of birth', selected.dob],
+                    ]],
+                    ['Driving licence', [
+                      ['Licence no.', selected.licenseNumber],
+                      ['Name on DL', selected.dlName],
+                      ['Licensed to drive', selected.dlVehicleClasses?.join(', ')],
+                      ['Status', selected.dlStatus],
+                      ['Issued', selected.dlIssueDate],
+                      ['Valid to', selected.dlValidUpto],
+                      ['RTO', [selected.dlRtoAuthority, selected.dlRtoState].filter(Boolean).join(', ')],
+                      ['Address on DL', selected.dlAddress],
+                      ['Verified', fmt(selected.dlVerifiedAt)],
+                    ]],
+                    ['PAN', [
+                      ['PAN', selected.panNumber],
+                      ['Name on PAN', selected.panName],
+                      ['Verified', fmt(selected.panVerifiedAt)],
+                    ]],
+                    ['Aadhaar', [
+                      ['Last 4', selected.aadhaarLast4],
+                      ['Name on Aadhaar', selected.aadhaarName],
+                      ['Date of birth', selected.aadhaarDob],
+                      ['Address', selected.aadhaarAddress],
+                      ['Verified', fmt(selected.aadhaarVerifiedAt)],
+                    ]],
+                  ];
+                  return (
+                    <div className="space-y-3">
+                      {groups.map(([title, rows]) => {
+                        const filled = rows.filter(([, v]) => v);
+                        return (
+                          <div key={title}>
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              {title}
+                            </p>
+                            {filled.length === 0 ? (
+                              <p className="text-sm text-slate-400">Not verified — nothing on file</p>
+                            ) : (
+                              <dl className="space-y-1.5 text-sm">
+                                {filled.map(([k, v]) => (
+                                  <div key={k} className="flex justify-between gap-3">
+                                    <dt className="shrink-0 text-slate-500">{k}</dt>
+                                    <dd className="text-right font-medium text-slate-900">{v}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </dl>
+                  );
+                })()}
 
                 {/* A mismatch between these is worth a human look before approving. */}
                 {selected.panName &&

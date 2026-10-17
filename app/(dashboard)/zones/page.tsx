@@ -28,6 +28,7 @@ interface Area {
   id: string;
   name: string;
   city?: string;
+  serviceType?: 'hyperlocal' | 'intercity' | 'both';
   type?: 'circle' | 'polygon';
   lat: number;
   lon: number;
@@ -44,6 +45,19 @@ interface City {
 }
 
 type Mode = 'idle' | 'polygon' | 'circle';
+type Svc = 'hyperlocal' | 'intercity' | 'both';
+
+const SERVICES: { key: Svc; label: string; hint: string }[] = [
+  { key: 'hyperlocal', label: 'Local', hint: 'Deliveries within this city' },
+  { key: 'intercity', label: 'Intercity', hint: 'This city as a pickup or drop endpoint' },
+  { key: 'both', label: 'Both', hint: 'One boundary governing both services' },
+];
+
+/** Does this area govern the service being edited? "both" governs everything. */
+const covers = (area: { serviceType?: Svc }, svc: Svc) => {
+  const t = area.serviceType || 'both';
+  return t === 'both' || svc === 'both' || t === svc;
+};
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -106,6 +120,7 @@ export default function ZonesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
+  const [svc, setSvc] = useState<Svc>('hyperlocal');
 
   const selectedCity = useMemo(
     () => cities.find((c) => c.name === city) || null,
@@ -113,8 +128,8 @@ export default function ZonesPage() {
   );
 
   const cityAreas = useMemo(
-    () => areas.filter((a) => (a.city || '') === city),
-    [areas, city]
+    () => areas.filter((a) => (a.city || '') === city && covers(a, svc)),
+    [areas, city, svc]
   );
 
   // ── data ────────────────────────────────────────────────────────────────────
@@ -197,10 +212,12 @@ export default function ZonesPage() {
     savedShapesRef.current.forEach((s) => s.setMap(null));
     savedShapesRef.current = [];
 
-    const visible = showOthers ? areas : areas.filter((a) => (a.city || '') === city);
+    const visible = showOthers
+      ? areas
+      : areas.filter((a) => (a.city || '') === city && covers(a, svc));
 
     visible.forEach((a) => {
-      const mine = (a.city || '') === city;
+      const mine = (a.city || '') === city && covers(a, svc);
       // Other cities' zones stay on the map but recede — useful for spotting a
       // gap at a boundary, distracting if they compete for attention.
       const colour = !mine ? '#94a3b8' : a.isActive ? '#f97316' : '#cbd5e1';
@@ -229,7 +246,7 @@ export default function ZonesPage() {
 
       savedShapesRef.current.push(shape);
     });
-  }, [areas, city, showOthers, mapReady]);
+  }, [areas, city, svc, showOthers, mapReady]);
 
   /** Turn the drawing tool on and off. */
   useEffect(() => {
@@ -320,6 +337,7 @@ export default function ZonesPage() {
         lat: c.lat(),
         lon: c.lng(),
         radiusKm: Math.round((shape.getRadius() / 1000) * 100) / 100,
+        serviceType: svc,
         isActive: true,
       };
     } else {
@@ -331,7 +349,7 @@ export default function ZonesPage() {
         setError('A drawn area needs at least 3 points');
         return;
       }
-      body = { name: name.trim(), city, type: 'polygon', polygon: path, isActive: true };
+      body = { name: name.trim(), city, serviceType: svc, type: 'polygon', polygon: path, isActive: true };
     }
 
     setSaving(true);
@@ -420,7 +438,8 @@ export default function ZonesPage() {
           {city && (
             <div className="text-sm text-slate-600">
               <span className="font-medium text-slate-900">{cityAreas.length}</span> area
-              {cityAreas.length === 1 ? '' : 's'} in {city}
+              {cityAreas.length === 1 ? '' : 's'} in {city} for{' '}
+              {svc === 'both' ? 'either service' : svc === 'hyperlocal' ? 'local' : 'intercity'}
             </div>
           )}
 
@@ -443,18 +462,62 @@ export default function ZonesPage() {
         )}
       </div>
 
-      {/* ── Step 2: the shape ────────────────────────────────────────────── */}
+      {/* ── Step 2: which service ────────────────────────────────────────── */}
+      <div
+        className={`rounded-xl border p-4 transition ${
+          city ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-60'
+        }`}
+      >
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Step 2 · Which service does this boundary govern?
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {SERVICES.map((o) => (
+            <button
+              key={o.key}
+              disabled={!city}
+              onClick={() => {
+                clearDraft();
+                setSvc(o.key);
+              }}
+              className={`rounded-lg border px-4 py-2 text-left transition disabled:cursor-not-allowed ${
+                svc === o.key
+                  ? 'border-orange-500 bg-orange-50'
+                  : 'border-slate-200 bg-white hover:bg-slate-50'
+              }`}
+            >
+              <span
+                className={`block text-sm font-semibold ${
+                  svc === o.key ? 'text-orange-700' : 'text-slate-800'
+                }`}
+              >
+                {o.label}
+              </span>
+              <span className="block text-xs text-slate-500">{o.hint}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          {svc === 'hyperlocal'
+            ? 'Local orders are refused unless pickup and drop are both inside this city.'
+            : svc === 'intercity'
+            ? 'Intercity orders are refused unless both ends sit in a mapped city, and the two cities differ.'
+            : 'One boundary for both services. Widening it for intercity also opens local delivery to the same area.'}
+        </p>
+      </div>
+
+      {/* ── Step 3: the shape ────────────────────────────────────────────── */}
       <div
         className={`rounded-xl border p-4 transition ${
           city ? 'border-sky-200 bg-sky-50' : 'border-slate-200 bg-slate-50 opacity-60'
         }`}
       >
         <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Step 2 · Mark the area
+          Step 3 · Mark the area
         </label>
 
         {!city ? (
-          <p className="text-sm text-slate-500">Choose a city above to start marking.</p>
+          <p className="text-sm text-slate-500">Choose a city and a service above to start marking.</p>
         ) : !hasDraft ? (
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -545,6 +608,7 @@ export default function ZonesPage() {
             <tr>
               <th className="px-4 py-3">Area</th>
               <th className="px-4 py-3">City</th>
+              <th className="px-4 py-3">Service</th>
               <th className="px-4 py-3">Shape</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3"></th>
@@ -553,13 +617,13 @@ export default function ZonesPage() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                   Loading…
                 </td>
               </tr>
             ) : listed.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                   {city ? `No areas in ${city} yet` : 'Choose a city to see its areas'}
                 </td>
               </tr>
@@ -568,6 +632,15 @@ export default function ZonesPage() {
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-900">{a.name}</td>
                   <td className="px-4 py-3 text-slate-600">{a.city || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                      {a.serviceType === 'hyperlocal'
+                        ? 'Local'
+                        : a.serviceType === 'intercity'
+                        ? 'Intercity'
+                        : 'Both'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {a.type === 'polygon'
                       ? `Boundary · ${a.polygon?.length ?? 0} points`
