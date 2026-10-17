@@ -44,6 +44,20 @@ interface City {
   isActive: boolean;
 }
 
+/**
+ * An open intercity leg. Matched in both directions by the server, so one row
+ * covers Ujjain to Indore and Indore to Ujjain.
+ */
+interface Route {
+  id: string;
+  fromCity: string;
+  toCity: string;
+  baseFare: number;
+  heavyFare: number;
+  gstPercent: number;
+  isActive: boolean;
+}
+
 type Mode = 'idle' | 'polygon' | 'circle';
 type Svc = 'hyperlocal' | 'intercity' | 'both';
 
@@ -121,6 +135,9 @@ export default function ZonesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const [svc, setSvc] = useState<Svc>('hyperlocal');
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [newRoute, setNewRoute] = useState({ to: '', baseFare: '', heavyFare: '', gst: '18' });
+  const [savingRoute, setSavingRoute] = useState(false);
 
   const selectedCity = useMemo(
     () => cities.find((c) => c.name === city) || null,
@@ -136,12 +153,16 @@ export default function ZonesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [areaRes, cityRes] = await Promise.all([
+      const [areaRes, cityRes, routeRes] = await Promise.all([
         apiRequest<{ areas: Area[] }>('/admin/service-areas'),
         apiRequest<{ cities: City[] }>('/admin/cities/metrics?days=1'),
+        apiRequest<{ routes: Route[] }>('/admin/cities/routes?includeInactive=true').catch(
+          () => ({ routes: [] as Route[] })
+        ),
       ]);
       setAreas(areaRes.areas || []);
       setCities((cityRes.cities || []).filter((c) => c.name));
+      setRoutes(routeRes?.routes || []);
     } catch (e: any) {
       setError(e.message || 'Could not load service areas');
     } finally {
@@ -368,6 +389,53 @@ export default function ZonesPage() {
     }
   };
 
+  const sameCity = (a?: string, b?: string) =>
+    (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+
+  /** Every open leg that touches the selected city, in either direction. */
+  const cityRoutes = useMemo(
+    () => routes.filter((r) => sameCity(r.fromCity, city) || sameCity(r.toCity, city)),
+    [routes, city]
+  );
+
+  const addRoute = async () => {
+    const base = Number(newRoute.baseFare);
+    const heavy = Number(newRoute.heavyFare);
+    if (!newRoute.to) return setError('Choose the city at the other end');
+    if (!(base > 0) || !(heavy > 0)) return setError('Both fares must be more than zero');
+
+    setSavingRoute(true);
+    setError(null);
+    try {
+      await apiRequest('/admin/cities/routes', {
+        method: 'POST',
+        body: JSON.stringify({
+          fromCity: city,
+          toCity: newRoute.to,
+          baseFare: base,
+          heavyFare: heavy,
+          gstPercent: Number(newRoute.gst) || 0,
+        }),
+      });
+      setNewRoute({ to: '', baseFare: '', heavyFare: '', gst: '18' });
+      await load();
+    } catch (e: any) {
+      setError(e.message || 'Could not open the route');
+    } finally {
+      setSavingRoute(false);
+    }
+  };
+
+  const removeRoute = async (r: Route) => {
+    if (!confirm(`Close ${r.fromCity} to ${r.toCity}? Customers can no longer book it.`)) return;
+    try {
+      await apiRequest(`/admin/cities/routes/${r.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e: any) {
+      alert(e.message || 'Failed');
+    }
+  };
+
   const toggle = async (a: Area) => {
     try {
       await apiRequest(`/admin/service-areas/${a.id}`, {
@@ -505,6 +573,116 @@ export default function ZonesPage() {
             : 'One boundary for both services. Widening it for intercity also opens local delivery to the same area.'}
         </p>
       </div>
+
+      {/* ── Intercity: which legs are open ───────────────────────────────── */}
+      {svc === 'intercity' && city && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Step 2b · Routes from {city}
+          </label>
+          <p className="mb-3 text-xs text-slate-500">
+            A boundary says {city} is an intercity endpoint. A route says where it
+            connects to, and what that leg costs. Each route works both ways, so one
+            row covers {city} to the other city and back.
+          </p>
+
+          {cityRoutes.length > 0 && (
+            <div className="mb-3 overflow-hidden rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Leg</th>
+                    <th className="px-3 py-2">Up to 3 kg</th>
+                    <th className="px-3 py-2">Over 3 kg</th>
+                    <th className="px-3 py-2">GST</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {cityRoutes.map((r) => (
+                    <tr key={r.id} className={r.isActive ? '' : 'opacity-50'}>
+                      <td className="px-3 py-2 font-medium text-slate-900">
+                        {r.fromCity} ⇄ {r.toCity}
+                        {!r.isActive && (
+                          <span className="ml-2 text-xs font-normal text-slate-400">closed</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">₹{r.baseFare}</td>
+                      <td className="px-3 py-2 text-slate-600">₹{r.heavyFare}</td>
+                      <td className="px-3 py-2 text-slate-600">{r.gstPercent}%</td>
+                      <td className="px-3 py-2 text-right">
+                        {r.isActive && (
+                          <button
+                            onClick={() => removeRoute(r)}
+                            className="rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                          >
+                            Close
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="grid gap-2 sm:grid-cols-[1.4fr_1fr_1fr_0.7fr_auto]">
+            <select
+              value={newRoute.to}
+              onChange={(e) => setNewRoute((r) => ({ ...r, to: e.target.value }))}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Connect to…</option>
+              {cities
+                .filter((c) => !sameCity(c.name, city))
+                .map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
+            <input
+              type="number"
+              min={0}
+              value={newRoute.baseFare}
+              onChange={(e) => setNewRoute((r) => ({ ...r, baseFare: e.target.value }))}
+              placeholder="Up to 3 kg (₹)"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <input
+              type="number"
+              min={0}
+              value={newRoute.heavyFare}
+              onChange={(e) => setNewRoute((r) => ({ ...r, heavyFare: e.target.value }))}
+              placeholder="Over 3 kg (₹)"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <input
+              type="number"
+              min={0}
+              value={newRoute.gst}
+              onChange={(e) => setNewRoute((r) => ({ ...r, gst: e.target.value }))}
+              placeholder="GST %"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <button
+              onClick={addRoute}
+              disabled={savingRoute}
+              className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+            >
+              {savingRoute ? 'Opening…' : 'Open route'}
+            </button>
+          </div>
+
+          {routes.filter((r) => r.isActive).length === 0 && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              No routes anywhere yet, so intercity is unrestricted — any two mapped
+              cities can be booked. The first route you open starts enforcing the list.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Step 3: the shape ────────────────────────────────────────────── */}
       <div
