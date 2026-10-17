@@ -62,9 +62,8 @@ type Mode = 'idle' | 'polygon' | 'circle';
 type Svc = 'hyperlocal' | 'intercity' | 'both';
 
 const SERVICES: { key: Svc; label: string; hint: string }[] = [
-  { key: 'hyperlocal', label: 'Local', hint: 'Deliveries within this city' },
-  { key: 'intercity', label: 'Intercity', hint: 'This city as a pickup or drop endpoint' },
-  { key: 'both', label: 'Both', hint: 'One boundary governing both services' },
+  { key: 'hyperlocal', label: 'Local', hint: 'Draw the ground a rider covers' },
+  { key: 'intercity', label: 'Intercity', hint: 'Pick which cities connect' },
 ];
 
 /** Does this area govern the service being edited? "both" governs everything. */
@@ -135,6 +134,7 @@ export default function ZonesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const [svc, setSvc] = useState<Svc>('hyperlocal');
+  const isIntercity = svc === 'intercity';
   const [routes, setRoutes] = useState<Route[]>([]);
   const [newRoute, setNewRoute] = useState({ to: '', baseFare: '', heavyFare: '', gst: '18' });
   const [savingRoute, setSavingRoute] = useState(false);
@@ -358,7 +358,7 @@ export default function ZonesPage() {
         lat: c.lat(),
         lon: c.lng(),
         radiusKm: Math.round((shape.getRadius() / 1000) * 100) / 100,
-        serviceType: svc,
+        serviceType: 'hyperlocal',
         isActive: true,
       };
     } else {
@@ -370,7 +370,7 @@ export default function ZonesPage() {
         setError('A drawn area needs at least 3 points');
         return;
       }
-      body = { name: name.trim(), city, serviceType: svc, type: 'polygon', polygon: path, isActive: true };
+      body = { name: name.trim(), city, serviceType: 'hyperlocal', type: 'polygon', polygon: path, isActive: true };
     }
 
     setSaving(true);
@@ -566,11 +566,9 @@ export default function ZonesPage() {
           ))}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          {svc === 'hyperlocal'
-            ? 'Local orders are refused unless pickup and drop are both inside this city.'
-            : svc === 'intercity'
-            ? 'Intercity orders are refused unless both ends sit in a mapped city, and the two cities differ.'
-            : 'One boundary for both services. Widening it for intercity also opens local delivery to the same area.'}
+          {isIntercity
+            ? 'Intercity is not bounded by a drawn area. A pickup anywhere in one city can go anywhere in the other, so the only thing to set is which cities connect.'
+            : 'Local orders are refused unless pickup and drop are both inside this boundary.'}
         </p>
       </div>
 
@@ -684,6 +682,11 @@ export default function ZonesPage() {
         </div>
       )}
 
+      {/* Everything below is about drawn ground, which intercity does not use.
+          Showing a map and a Draw button on an intercity city only invites
+          someone to fence a service that is not fenced. */}
+      {!isIntercity && (
+        <>
       {/* ── Step 3: the shape ────────────────────────────────────────────── */}
       <div
         className={`rounded-xl border p-4 transition ${
@@ -855,6 +858,8 @@ export default function ZonesPage() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </div>
   );
 }
