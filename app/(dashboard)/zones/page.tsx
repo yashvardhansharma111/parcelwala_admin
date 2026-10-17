@@ -21,6 +21,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/api';
+import {
+  hexesInBounds,
+  hexKey,
+  hexRing,
+  hexWidthKm,
+  keyToHex,
+  pointToHex,
+  type Hex,
+} from '@/lib/hexGrid';
 
 type Pt = { lat: number; lon: number };
 
@@ -29,7 +38,10 @@ interface Area {
   name: string;
   city?: string;
   serviceType?: 'hyperlocal' | 'intercity' | 'both';
-  type?: 'circle' | 'polygon';
+  type?: 'circle' | 'polygon' | 'hexes';
+  cells?: { points: Pt[] }[];
+  hexes?: Hex[];
+  hexSizeKm?: number;
   lat: number;
   lon: number;
   radiusKm: number;
@@ -58,7 +70,13 @@ interface Route {
   isActive: boolean;
 }
 
-type Mode = 'idle' | 'polygon' | 'circle';
+type Mode = 'idle' | 'polygon' | 'circle' | 'hexes';
+
+/** Cell sizes offered, labelled by how wide a cell is on the ground. */
+const HEX_SIZES = [0.6, 1.2, 2, 3.5];
+
+/** Past this many cells on screen the grid is unreadable and slow to draw. */
+const MAX_GRID_CELLS = 450;
 type Svc = 'hyperlocal' | 'intercity' | 'both';
 
 const SERVICES: { key: Svc; label: string; hint: string }[] = [
@@ -119,6 +137,9 @@ export default function ZonesPage() {
   const drawingMgrRef = useRef<any>(null);
   const savedShapesRef = useRef<any[]>([]);
   const draftRef = useRef<any>(null);
+  /** The grid drawn over the current view, and the cells switched on. */
+  const gridRef = useRef<any[]>([]);
+  const paintedRef = useRef<any[]>([]);
 
   const [areas, setAreas] = useState<Area[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -129,6 +150,9 @@ export default function ZonesPage() {
   const [city, setCity] = useState('');
   const [mode, setMode] = useState<Mode>('idle');
   const [hasDraft, setHasDraft] = useState(false);
+  const [hexSizeKm, setHexSizeKm] = useState(1.2);
+  const [painted, setPainted] = useState<Set<string>>(new Set());
+  const [gridTooFine, setGridTooFine] = useState(false);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -253,6 +277,21 @@ export default function ZonesPage() {
         zIndex: mine ? 2 : 1,
       };
 
+      // A painted area is many rings, so Google draws it as one polygon with
+      // several paths — the gaps between cells close up and it reads as one
+      // shape rather than a scatter of tiles.
+      if (a.type === 'hexes' && a.cells?.length) {
+        savedShapesRef.current.push(
+          new google.maps.Polygon({
+            ...opts,
+            paths: a.cells.map((cell) =>
+              cell.points.map((p) => ({ lat: p.lat, lng: p.lon }))
+            ),
+          })
+        );
+        return;
+      }
+
       const shape =
         a.type === 'polygon' && a.polygon?.length
           ? new google.maps.Polygon({
@@ -321,9 +360,101 @@ export default function ZonesPage() {
     });
   }, [mode, mapReady]);
 
+  /**
+   * Draw the grid over whatever is on screen, and keep it in step as the map
+   * moves. Cells are styled in place when toggled rather than redrawn, so
+   * painting stays instant.
+   */
+  useEffect(() => {
+    const google = gRef.current;
+    const map = mapRef.current;
+    if (!google || !map) return;
+
+    const clearGrid = () => {
+      gridRef.current.forEach((g) => g.poly.setMap(null));
+      gridRef.current = [];
+    };
+
+    if (mode !== 'hexes') {
+      clearGrid();
+      setGridTooFine(false);
+      return;
+    }
+
+    const style = (key: string) => ({
+      strokeColor: paintedRef.current.includes(key) ? '#F97316' : '#94A3B8',
+      strokeOpacity: paintedRef.current.includes(key) ? 0.9 : 0.35,
+      strokeWeight: 1,
+      fillColor: '#F97316',
+      fillOpacity: paintedRef.current.includes(key) ? 0.35 : 0.02,
+    });
+
+    const draw = () => {
+      const b = map.getBounds();
+      if (!b) return;
+      const sw = b.getSouthWest();
+      const ne = b.getNorthEast();
+      const cells = hexesInBounds(
+        { lat: sw.lat(), lon: sw.lng() },
+        { lat: ne.lat(), lon: ne.lng() },
+        hexSizeKm,
+        MAX_GRID_CELLS + 1
+      );
+
+      clearGrid();
+      if (cells.length > MAX_GRID_CELLS) {
+        setGridTooFine(true);
+        return;
+      }
+      setGridTooFine(false);
+
+      for (const h of cells) {
+        const key = hexKey(h);
+        const poly = new google.maps.Polygon({
+          map,
+          paths: hexRing(h, hexSizeKm).map((pt) => ({ lat: pt.lat, lng: pt.lon })),
+          clickable: true,
+          zIndex: 5,
+          ...style(key),
+        });
+        poly.addListener('click', () => {
+          setPainted((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            paintedRef.current = [...next];
+            return next;
+          });
+          // Restyled here rather than on a redraw, so a tap lands immediately.
+          const on = !paintedRef.current.includes(key);
+          poly.setOptions({
+            strokeColor: on ? '#F97316' : '#94A3B8',
+            strokeOpacity: on ? 0.9 : 0.35,
+            fillOpacity: on ? 0.35 : 0.02,
+          });
+        });
+        gridRef.current.push({ key, poly });
+      }
+    };
+
+    draw();
+    const idle = map.addListener('idle', draw);
+    return () => {
+      google.maps.event.removeListener(idle);
+      clearGrid();
+    };
+  }, [mode, hexSizeKm, mapReady]);
+
+  /** Keep the ref in step so the click handler sees the current selection. */
+  useEffect(() => {
+    paintedRef.current = [...painted];
+  }, [painted]);
+
   const clearDraft = () => {
     draftRef.current?.setMap(null);
     draftRef.current = null;
+    setPainted(new Set());
+    paintedRef.current = [];
     setHasDraft(false);
     setMode('idle');
     setName('');
@@ -334,7 +465,6 @@ export default function ZonesPage() {
   const save = async () => {
     const google = gRef.current;
     const shape = draftRef.current;
-    if (!google || !shape) return;
     if (!city) {
       setError('Choose a service city first');
       return;
@@ -343,6 +473,44 @@ export default function ZonesPage() {
       setError('Give the area a name');
       return;
     }
+
+    // Painted cells: one ring per cell, so the server keeps doing the same
+    // point-in-polygon test and never has to know about a grid.
+    if (mode === 'hexes' || painted.size > 0) {
+      if (painted.size === 0) {
+        setError('Tap the map to select at least one cell');
+        return;
+      }
+      const hexes = [...painted].map(keyToHex);
+      setSaving(true);
+      setError(null);
+      try {
+        await apiRequest('/admin/service-areas', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: name.trim(),
+            city,
+            serviceType: 'hyperlocal',
+            type: 'hexes',
+            // Wrapped per ring: Firestore rejects arrays of arrays.
+            cells: hexes.map((h) => ({ points: hexRing(h, hexSizeKm) })),
+            hexes,
+            hexSizeKm,
+            isActive: true,
+          }),
+        });
+        clearDraft();
+        setMode('idle');
+        await load();
+      } catch (e: any) {
+        setError(e.message || 'Could not save the area');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (!google || !shape) return;
 
     // Read the shape now, not when it was drawn — it stays editable until save,
     // and the dragged version is the one the admin means.
@@ -738,7 +906,7 @@ export default function ZonesPage() {
 
         {!city ? (
           <p className="text-sm text-slate-500">Choose a city and a service above to start marking.</p>
-        ) : !hasDraft ? (
+        ) : !hasDraft && painted.size === 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setMode(mode === 'polygon' ? 'idle' : 'polygon')}
@@ -760,18 +928,62 @@ export default function ZonesPage() {
             >
               Draw radius
             </button>
+            <button
+              onClick={() => setMode(mode === 'hexes' ? 'idle' : 'hexes')}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                mode === 'hexes'
+                  ? 'bg-sky-600 text-white'
+                  : 'border border-sky-300 bg-white text-sky-700 hover:bg-sky-100'
+              }`}
+            >
+              Paint cells
+            </button>
             <p className="text-sm text-sky-900">
               {mode === 'polygon'
                 ? 'Click around the boundary, then click the first point to close it.'
                 : mode === 'circle'
                 ? 'Drag from the centre outwards to set the radius.'
-                : 'A boundary follows the real edge of the city. A radius is quicker for a city you are just launching.'}
+                : mode === 'hexes'
+                ? 'Tap cells to switch them on. Tap again to remove. The area is whatever you cover.'
+                : 'Painting cells is the quickest — no lines to place, and a wrong tap is just another tap.'}
             </p>
+
+            {mode === 'hexes' && (
+              <div className="mt-1 flex w-full flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">Cell size</span>
+                {HEX_SIZES.map((sz) => (
+                  <button
+                    key={sz}
+                    onClick={() => {
+                      // Cells of one size do not line up with another, so the
+                      // selection cannot carry across a size change.
+                      setPainted(new Set());
+                      paintedRef.current = [];
+                      setHexSizeKm(sz);
+                    }}
+                    className={`rounded-lg border px-3 py-1 text-xs font-semibold ${
+                      hexSizeKm === sz
+                        ? 'border-orange-400 bg-orange-50 text-orange-700'
+                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {hexWidthKm(sz).toFixed(1)} km
+                  </button>
+                ))}
+                {gridTooFine && (
+                  <span className="text-xs text-amber-700">
+                    Zoom in to paint at this size.
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-sky-900">
-              Drag the shape or its points to adjust, then name it and save.
+              {painted.size > 0
+                ? `${painted.size} cell${painted.size === 1 ? '' : 's'} selected — keep tapping to adjust, then name it and save.`
+                : 'Drag the shape or its points to adjust, then name it and save.'}
             </p>
             <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
               <input
@@ -862,7 +1074,9 @@ export default function ZonesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {a.type === 'polygon'
+                    {a.type === 'hexes'
+                      ? `Cells · ${a.cells?.length ?? 0}`
+                      : a.type === 'polygon'
                       ? `Boundary · ${a.polygon?.length ?? 0} points`
                       : `Radius · ${a.radiusKm} km`}
                   </td>
