@@ -426,6 +426,25 @@ export default function ZonesPage() {
     }
   };
 
+  /** Closing only flips a flag, so the same fares can be put straight back. */
+  const reopenRoute = async (r: Route) => {
+    try {
+      await apiRequest('/admin/cities/routes', {
+        method: 'POST',
+        body: JSON.stringify({
+          fromCity: r.fromCity,
+          toCity: r.toCity,
+          baseFare: r.baseFare,
+          heavyFare: r.heavyFare,
+          gstPercent: r.gstPercent,
+        }),
+      });
+      await load();
+    } catch (e: any) {
+      alert(e.message || 'Could not reopen the route');
+    }
+  };
+
   const removeRoute = async (r: Route) => {
     if (!confirm(`Close ${r.fromCity} to ${r.toCity}? Customers can no longer book it.`)) return;
     try {
@@ -593,28 +612,48 @@ export default function ZonesPage() {
                     <th className="px-3 py-2">Up to 3 kg</th>
                     <th className="px-3 py-2">Over 3 kg</th>
                     <th className="px-3 py-2">GST</th>
+                    <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {cityRoutes.map((r) => (
-                    <tr key={r.id} className={r.isActive ? '' : 'opacity-50'}>
-                      <td className="px-3 py-2 font-medium text-slate-900">
+                    <tr key={r.id} className={r.isActive ? '' : 'bg-slate-50 text-slate-400'}>
+                      <td
+                        className={`px-3 py-2 font-medium ${
+                          r.isActive ? 'text-slate-900' : 'text-slate-400 line-through'
+                        }`}
+                      >
                         {r.fromCity} ⇄ {r.toCity}
-                        {!r.isActive && (
-                          <span className="ml-2 text-xs font-normal text-slate-400">closed</span>
-                        )}
                       </td>
-                      <td className="px-3 py-2 text-slate-600">₹{r.baseFare}</td>
-                      <td className="px-3 py-2 text-slate-600">₹{r.heavyFare}</td>
-                      <td className="px-3 py-2 text-slate-600">{r.gstPercent}%</td>
+                      <td className="px-3 py-2">₹{r.baseFare}</td>
+                      <td className="px-3 py-2">₹{r.heavyFare}</td>
+                      <td className="px-3 py-2">{r.gstPercent}%</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-medium ${
+                            r.isActive
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {r.isActive ? 'Open' : 'Closed'}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-right">
-                        {r.isActive && (
+                        {r.isActive ? (
                           <button
                             onClick={() => removeRoute(r)}
                             className="rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
                           >
                             Close
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => reopenRoute(r)}
+                            className="rounded-lg border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                          >
+                            Reopen
                           </button>
                         )}
                       </td>
