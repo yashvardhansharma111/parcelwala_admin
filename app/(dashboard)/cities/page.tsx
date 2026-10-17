@@ -142,6 +142,7 @@ function Progress({ actual, target }: { actual: number; target: number | null })
 export default function CitiesPage() {
   const [cities, setCities] = useState<CityMetrics[]>([]);
   const [unmanaged, setUnmanaged] = useState<Unmanaged[]>([]);
+  const [globalRates, setGlobalRates] = useState<Record<string, number>>({});
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,11 +153,21 @@ export default function CitiesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest<{ cities: CityMetrics[]; unmanaged: Unmanaged[] }>(
-        `/admin/cities/metrics?days=${days}`
-      );
+      const [res, global] = await Promise.all([
+        apiRequest<{ cities: CityMetrics[]; unmanaged: Unmanaged[] }>(
+          `/admin/cities/metrics?days=${days}`
+        ),
+        // The global card, so an empty field can show the number a rider in this
+        // city will actually be paid. "inherit" on its own said a value came from
+        // elsewhere but never what it was, so there was no way to see the rate
+        // card the rider sees without opening their app.
+        apiRequest<{ pricing: Record<string, number> }>('/admin/settings/pricing').catch(
+          () => ({ pricing: {} as Record<string, number> })
+        ),
+      ]);
       setCities(res.cities || []);
       setUnmanaged(res.unmanaged || []);
+      setGlobalRates(global?.pricing || {});
     } catch (e: any) {
       setError(e.message || 'Could not load city metrics');
     } finally {
@@ -481,7 +492,7 @@ export default function CitiesPage() {
                         min={0}
                         value={(editing[key] as number | null) ?? ''}
                         onChange={(e) => patch({ [key]: num(e.target.value) } as any)}
-                        placeholder="inherit"
+                        placeholder={globalRates[key as string] != null ? String(globalRates[key as string]) : 'inherit'}
                         className={`${inputCls} ${overridden ? 'border-orange-300 bg-orange-50' : ''}`}
                       />
                     </div>
@@ -513,7 +524,7 @@ export default function CitiesPage() {
                           min={0}
                           value={(editing[key] as number | null) ?? ''}
                           onChange={(e) => patch({ [key]: num(e.target.value) } as any)}
-                          placeholder="inherit"
+                          placeholder={globalRates[key as string] != null ? String(globalRates[key as string]) : 'inherit'}
                           className={`${inputCls} ${overridden ? 'border-emerald-300 bg-emerald-50' : ''}`}
                         />
                       </div>
@@ -543,7 +554,7 @@ export default function CitiesPage() {
                           min={0}
                           value={(editing[key] as number | null) ?? ''}
                           onChange={(e) => patch({ [key]: num(e.target.value) } as any)}
-                          placeholder="inherit"
+                          placeholder={globalRates[key as string] != null ? String(globalRates[key as string]) : 'inherit'}
                           className={`${inputCls} ${overridden ? 'border-sky-300 bg-sky-50' : ''}`}
                         />
                       </div>
