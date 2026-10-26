@@ -14,6 +14,12 @@ const NAV = [
   { href: '/kyc', label: 'KYC review', icon: '🪪' },
   { href: '/cities', label: 'Cities', icon: '🏙' },
   { href: '/zones', label: 'Zones', icon: '🗺' },
+  // Portal partners. Top-ups and rate cards are reachable from this page too,
+  // but they are queues an operator checks on their own schedule, so they get
+  // their own entries rather than being buried a click deep.
+  { href: '/partners', label: 'Partners', icon: '🏪' },
+  { href: '/partner-topups', label: 'Partner top-ups', icon: '💰' },
+  { href: '/rate-cards', label: 'Rate cards', icon: '🧾' },
   { href: '/analytics', label: 'Analytics', icon: '📊' },
   { href: '/withdrawals', label: 'Withdrawals', icon: '💸' },
   { href: '/coupons', label: 'Coupons', icon: '🏷' },
