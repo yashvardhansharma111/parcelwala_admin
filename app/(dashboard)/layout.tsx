@@ -22,6 +22,9 @@ const NAV = [
   { href: '/rate-cards', label: 'Rate cards', icon: '🧾' },
   { href: '/analytics', label: 'Analytics', icon: '📊' },
   { href: '/withdrawals', label: 'Withdrawals', icon: '💸' },
+  // Shop takings captains are carrying. Their wallet is down by this much
+  // until they deposit, so it is a queue with a cost to ignoring it.
+  { href: '/cod-deposits', label: 'Cash deposits', icon: '💵' },
   { href: '/coupons', label: 'Coupons', icon: '🏷' },
   { href: '/notifications', label: 'Notifications', icon: '🔔' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
