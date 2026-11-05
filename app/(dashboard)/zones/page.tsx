@@ -84,11 +84,19 @@ const SERVICES: { key: Svc; label: string; hint: string }[] = [
   { key: 'intercity', label: 'Intercity', hint: 'Pick which cities connect' },
 ];
 
-/** Does this area govern the service being edited? "both" governs everything. */
-const covers = (area: { serviceType?: Svc }, svc: Svc) => {
-  const t = area.serviceType || 'both';
-  return t === 'both' || svc === 'both' || t === svc;
-};
+/**
+ * Does this drawn area actually govern anything?
+ *
+ * Only local delivery is bounded by drawn ground. Intercity is a leg between
+ * two towns and is decided by the route list alone — the server never consults
+ * an area for it. So an area marked intercity-only governs nothing at all, and
+ * listing it next to the ones that do only suggests intercity is fenced.
+ *
+ * Areas drawn before service types existed have no serviceType and govern
+ * local, which is why anything that is not explicitly intercity counts.
+ */
+const governsLocal = (area: { serviceType?: Svc }) =>
+  (area.serviceType || 'both') !== 'intercity';
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -169,8 +177,8 @@ export default function ZonesPage() {
   );
 
   const cityAreas = useMemo(
-    () => areas.filter((a) => (a.city || '') === city && covers(a, svc)),
-    [areas, city, svc]
+    () => areas.filter((a) => (a.city || '') === city && governsLocal(a)),
+    [areas, city]
   );
 
   // ── data ────────────────────────────────────────────────────────────────────
@@ -259,10 +267,10 @@ export default function ZonesPage() {
 
     const visible = showOthers
       ? areas
-      : areas.filter((a) => (a.city || '') === city && covers(a, svc));
+      : areas.filter((a) => (a.city || '') === city && governsLocal(a));
 
     visible.forEach((a) => {
-      const mine = (a.city || '') === city && covers(a, svc);
+      const mine = (a.city || '') === city && governsLocal(a);
       // Other cities' zones stay on the map but recede — useful for spotting a
       // gap at a boundary, distracting if they compete for attention.
       const colour = !mine ? '#94a3b8' : a.isActive ? '#f97316' : '#cbd5e1';
@@ -766,9 +774,10 @@ export default function ZonesPage() {
             Step 2b · Routes from {city}
           </label>
           <p className="mb-3 text-xs text-slate-500">
-            A boundary says {city} is an intercity endpoint. A route says where it
-            connects to, and what that leg costs. Each route works both ways, so one
-            row covers {city} to the other city and back.
+            Intercity needs no drawn area — a route is the whole configuration. It
+            says which two cities connect and what that leg costs, and a pickup
+            anywhere in one can go anywhere in the other. Each route works both
+            ways, so one row covers {city} to the other city and back.
           </p>
 
           {cityRoutes.length > 0 && (
@@ -1040,7 +1049,6 @@ export default function ZonesPage() {
             <tr>
               <th className="px-4 py-3">Area</th>
               <th className="px-4 py-3">City</th>
-              <th className="px-4 py-3">Service</th>
               <th className="px-4 py-3">Shape</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3"></th>
@@ -1049,13 +1057,13 @@ export default function ZonesPage() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                   Loading…
                 </td>
               </tr>
             ) : listed.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                   {city ? `No areas in ${city} yet` : 'Choose a city to see its areas'}
                 </td>
               </tr>
@@ -1064,15 +1072,6 @@ export default function ZonesPage() {
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-900">{a.name}</td>
                   <td className="px-4 py-3 text-slate-600">{a.city || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-                      {a.serviceType === 'hyperlocal'
-                        ? 'Local'
-                        : a.serviceType === 'intercity'
-                        ? 'Intercity'
-                        : 'Both'}
-                    </span>
-                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {a.type === 'hexes'
                       ? `Cells · ${a.cells?.length ?? 0}`
