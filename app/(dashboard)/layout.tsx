@@ -52,7 +52,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   const Sidebar = (
-    <aside className="flex flex-col w-60 bg-slate-900 text-white min-h-full">
+    <aside className="flex h-full w-60 shrink-0 flex-col overflow-hidden bg-slate-900 text-white">
       <div className="px-5 py-5 border-b border-slate-700">
         <div className="flex items-center gap-2.5">
           <img src="/logo-parcelwalah.png" alt="Parcelwalah" className="h-9 w-9 shrink-0" />
@@ -63,7 +63,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
 
-      <nav className="flex-1 py-4 px-3 space-y-0.5">
+      <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
         {NAV.map((item) => {
           const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
           return (
@@ -97,7 +97,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Desktop sidebar */}
-      <div className="hidden md:flex">{Sidebar}</div>
+      <div className="hidden shrink-0 md:flex">{Sidebar}</div>
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (

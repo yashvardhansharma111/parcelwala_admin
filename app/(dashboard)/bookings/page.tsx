@@ -96,6 +96,38 @@ export default function BookingsPage() {
       )
     : bookings;
 
+  // Download exactly the rows the current filters show (status + search).
+  function downloadCsv() {
+    const cell = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = ['Tracking', 'Service type', 'Pickup city', 'Drop city', 'Status', 'Rider', 'Fare', 'Payment method', 'Payment status', 'Created'];
+    const lines = rows.map((b) =>
+      [
+        b.trackingNumber || b.id,
+        b.serviceType || 'hyperlocal',
+        b.pickup?.city || '',
+        b.drop?.city || '',
+        b.status,
+        b.riderName || b.assignmentStatus || 'unassigned',
+        b.fare ?? '',
+        b.paymentMethod || '',
+        b.paymentStatus || '',
+        fmtDate(b.createdAt),
+      ]
+        .map(cell)
+        .join(',')
+    );
+    const csv = [header.map(cell).join(','), ...lines].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `parcelwalah-bookings-${new Date().toISOString().slice(0, 10)}-${status.toLowerCase()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -131,6 +163,13 @@ export default function BookingsPage() {
             </option>
           ))}
         </select>
+        <button
+          onClick={downloadCsv}
+          disabled={loading || rows.length === 0}
+          className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          ⬇ Download CSV ({rows.length})
+        </button>
       </div>
 
       {error && (
